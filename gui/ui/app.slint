@@ -1,0 +1,333 @@
+import { Button, LineEdit, SpinBox, CheckBox, ComboBox,
+         ScrollView, GroupBox, VerticalBox, HorizontalBox,
+         StandardListView, TextEdit } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    title: "Video Thumbnailer";
+    preferred-width: 960px;
+    preferred-height: 760px;
+    min-width: 700px;
+    min-height: 560px;
+
+    // ── File list ─────────────────────────────────────────────────────────────
+    in-out property <[StandardListViewItem]> file-items: [];
+
+    // ── Output / misc ─────────────────────────────────────────────────────────
+    in-out property <string>  output-dir:   "";
+    in-out property <int>     output-format: 0;   // 0=JPEG  1=PNG  2=WebP
+    in-out property <int>     quality:      85;
+    in-out property <int>     frame-max-width:    1920;
+    in-out property <int>     frame-max-height:   1080;
+
+    // ── Mode ─────────────────────────────────────────────────────────────────
+    in-out property <int>     mode:         0;    // 0=Single 1=Grid 2=Sequence
+    in-out property <int>     seek-percent: 10;   // 0–100
+    in-out property <int>     grid-cols:    3;
+    in-out property <int>     grid-rows:    3;
+    in-out property <int>     frame-count:  5;
+
+    // ── Options ───────────────────────────────────────────────────────────────
+    in-out property <bool>    overwrite:    false;
+    in-out property <string>  prefix:       "";
+
+    // ── Overlay ───────────────────────────────────────────────────────────────
+    in-out property <bool>    show-timestamp:    false;
+    in-out property <int>     timestamp-pos:     0;   // 0=BR 1=BL 2=TR 3=TL
+    in-out property <int>     timestamp-size:    28;
+    in-out property <bool>    show-meta-bar:     false;
+    in-out property <int>     bar-pos:           0;   // 0=Top 1=Bottom
+    in-out property <int>     bar-size:          22;
+    // Metadata fields (each field toggled individually)
+    in-out property <bool>    meta-filename:     true;
+    in-out property <bool>    meta-duration:     true;
+    in-out property <bool>    meta-fps:          false;
+    in-out property <bool>    meta-resolution:   false;
+    in-out property <bool>    meta-filesize:     false;
+    in-out property <bool>    meta-timestamp:    false;
+    in-out property <bool>    meta-codec:        false;
+    in-out property <bool>    meta-bitrate:      false;
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    in-out property <float>   progress:     0;    // 0.0 – 1.0
+    in-out property <string>  status-text:  "Ready";
+    in-out property <bool>    is-processing: false;
+    in-out property <string>  log-text:     "";
+
+    // ── Callbacks (implemented in Rust) ───────────────────────────────────────
+    callback add-files();
+    callback add-folder();
+    callback clear-files();
+    callback select-output-dir();
+    callback start();
+    callback stop-processing();
+
+    // ── Layout ────────────────────────────────────────────────────────────────
+    VerticalBox {
+        padding: 8px;
+        spacing: 6px;
+
+        // Title
+        Text {
+            text: "Video Thumbnailer";
+            font-size: 18px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        // ── Top area: file list + settings ───────────────────────────────────
+        HorizontalBox {
+            spacing: 8px;
+
+            // ── Left: file list ───────────────────────────────────────────────
+            GroupBox {
+                title: "Input Files";
+                min-width: 260px;
+                max-width: 340px;
+                vertical-stretch: 1;
+
+                VerticalBox {
+                    StandardListView {
+                        model: file-items;
+                        min-height: 240px;
+                        vertical-stretch: 1;
+                    }
+                    HorizontalBox {
+                        spacing: 4px;
+                        Button { text: "Add Files";   clicked => { add-files();   } }
+                        Button { text: "Add Folder";  clicked => { add-folder();  } }
+                        Button { text: "Clear";       clicked => { clear-files(); } }
+                    }
+                }
+            }
+
+            // ── Right: settings ───────────────────────────────────────────────
+            ScrollView {
+                horizontal-stretch: 1;
+                vertical-stretch:   1;
+
+                VerticalBox {
+                    spacing: 6px;
+                    padding: 4px;
+
+                    // Output settings
+                    GroupBox {
+                        title: "Output";
+                        VerticalBox {
+                            spacing: 4px;
+                            HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Directory:"; vertical-alignment: center; min-width: 72px; }
+                                LineEdit {
+                                    text <=> output-dir;
+                                    placeholder-text: "(same as input file)";
+                                    horizontal-stretch: 1;
+                                }
+                                Button { text: "Browse"; clicked => { select-output-dir(); } }
+                            }
+                            HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Format:"; vertical-alignment: center; min-width: 72px; }
+                                ComboBox {
+                                    model: ["JPEG", "PNG", "WebP"];
+                                    current-index <=> output-format;
+                                    min-width: 90px;
+                                }
+                                Text { text: "Quality:"; vertical-alignment: center; }
+                                SpinBox { value <=> quality; minimum: 1; maximum: 100; min-width: 80px; }
+                            }
+                            HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Max width:"; vertical-alignment: center; min-width: 72px; }
+                                SpinBox { value <=> frame-max-width;  minimum: 64; maximum: 7680; min-width: 90px; }
+                                Text { text: "height:"; vertical-alignment: center; }
+                                SpinBox { value <=> frame-max-height; minimum: 64; maximum: 4320; min-width: 90px; }
+                            }
+                        }
+                    }
+
+                    // Mode settings
+                    GroupBox {
+                        title: "Mode";
+                        VerticalBox {
+                            spacing: 4px;
+                            HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Mode:"; vertical-alignment: center; min-width: 72px; }
+                                ComboBox {
+                                    model: ["Single frame", "Grid (NxM)", "Sequence"];
+                                    current-index <=> mode;
+                                    min-width: 160px;
+                                }
+                            }
+
+                            // Single mode params
+                            if mode == 0 : HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Seek %:"; vertical-alignment: center; min-width: 72px; }
+                                SpinBox { value <=> seek-percent; minimum: 0; maximum: 100; min-width: 80px; }
+                                Text {
+                                    text: "(0 = start, 50 = middle, 100 = end)";
+                                    vertical-alignment: center;
+                                    color: #888888;
+                                }
+                            }
+
+                            // Grid mode params
+                            if mode == 1 : HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Cols:"; vertical-alignment: center; min-width: 72px; }
+                                SpinBox { value <=> grid-cols; minimum: 1; maximum: 12; min-width: 80px; }
+                                Text { text: "Rows:"; vertical-alignment: center; }
+                                SpinBox { value <=> grid-rows; minimum: 1; maximum: 12; min-width: 80px; }
+                                Text {
+                                    text: "→ " + (grid-cols * grid-rows) + " frames";
+                                    vertical-alignment: center;
+                                    color: #888888;
+                                }
+                            }
+
+                            // Sequence mode params
+                            if mode == 2 : HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Frames:"; vertical-alignment: center; min-width: 72px; }
+                                SpinBox { value <=> frame-count; minimum: 1; maximum: 500; min-width: 80px; }
+                                Text {
+                                    text: "(saved as separate files)";
+                                    vertical-alignment: center;
+                                    color: #888888;
+                                }
+                            }
+                        }
+                    }
+
+                    // Extra options
+                    GroupBox {
+                        title: "Options";
+                        VerticalBox {
+                            spacing: 4px;
+                            CheckBox { text: "Overwrite existing output files"; checked <=> overwrite; }
+                            HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Prefix:"; vertical-alignment: center; min-width: 72px; }
+                                LineEdit {
+                                    text <=> prefix;
+                                    placeholder-text: "Optional filename prefix";
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                        }
+                    }
+
+                    // Overlays
+                    GroupBox {
+                        title: "Overlays  (requires a TTF font on the system)";
+                        VerticalBox {
+                            spacing: 4px;
+
+                            // ── Timestamp ─────────────────────────────────────
+                            CheckBox { text: "Stamp timestamp on each frame"; checked <=> show-timestamp; }
+                            if show-timestamp : HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Position:"; vertical-alignment: center; min-width: 72px; }
+                                ComboBox {
+                                    model: ["Bottom-right", "Bottom-left", "Top-right", "Top-left"];
+                                    current-index <=> timestamp-pos;
+                                    min-width: 130px;
+                                }
+                                Text { text: "Size (px):"; vertical-alignment: center; }
+                                SpinBox { value <=> timestamp-size; minimum: 8; maximum: 96; min-width: 75px; }
+                            }
+
+                            // ── Metadata bar ──────────────────────────────────
+                            CheckBox { text: "Add metadata bar"; checked <=> show-meta-bar; }
+                            if show-meta-bar : HorizontalBox {
+                                spacing: 6px;
+                                Text { text: "Position:"; vertical-alignment: center; min-width: 72px; }
+                                ComboBox {
+                                    model: ["Top", "Bottom"];
+                                    current-index <=> bar-pos;
+                                    min-width: 90px;
+                                }
+                                Text { text: "Size (px):"; vertical-alignment: center; }
+                                SpinBox { value <=> bar-size; minimum: 8; maximum: 72; min-width: 75px; }
+                            }
+                            if show-meta-bar : HorizontalBox {
+                                spacing: 8px;
+                                Text { text: "Fields:"; vertical-alignment: center; min-width: 72px; }
+                                CheckBox { text: "Filename";   checked <=> meta-filename; }
+                                CheckBox { text: "Duration";   checked <=> meta-duration; }
+                                CheckBox { text: "FPS";        checked <=> meta-fps; }
+                                CheckBox { text: "Resolution"; checked <=> meta-resolution; }
+                            }
+                            if show-meta-bar : HorizontalBox {
+                                spacing: 8px;
+                                Text { text: ""; min-width: 72px; }
+                                CheckBox { text: "File size";  checked <=> meta-filesize; }
+                                CheckBox { text: "Timestamp";  checked <=> meta-timestamp; }
+                                CheckBox { text: "Codec";      checked <=> meta-codec; }
+                                CheckBox { text: "Bitrate";    checked <=> meta-bitrate; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Progress bar ──────────────────────────────────────────────────────
+        Rectangle {
+            height: 24px;
+            border-radius: 6px;
+            background: #e0e0e0;
+            clip: true;
+
+            Rectangle {
+                x: 0;
+                y: 0;
+                width: parent.width * progress;
+                height: parent.height;
+                border-radius: 6px;
+                background: is-processing ? #4CAF50 : #2196F3;
+                animate width { duration: 250ms; easing: ease-out; }
+            }
+            Text {
+                x: 0; y: 0;
+                width: parent.width; height: parent.height;
+                text: round(progress * 100) + "%";
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: progress > 0.55 ? #ffffff : #333333;
+                font-weight: 600;
+            }
+        }
+
+        // ── Status + Start / Stop button ──────────────────────────────────────
+        HorizontalBox {
+            spacing: 8px;
+            Text {
+                text: status-text;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: is-processing ? "Stop" : "Start";
+                enabled: is-processing || file-items.length > 0;
+                clicked => {
+                    if is-processing {
+                        stop-processing();
+                    } else {
+                        start();
+                    }
+                }
+            }
+        }
+
+        // ── Log / output area ─────────────────────────────────────────────────
+        TextEdit {
+            text <=> log-text;
+            read-only: true;
+            height: 110px;
+            wrap: word-wrap;
+        }
+    }
+}

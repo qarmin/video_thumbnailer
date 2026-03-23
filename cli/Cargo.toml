@@ -1,0 +1,12 @@
+[package]
+name = "thumbnailer-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "vthumb"
+path = "src/main.rs"
+
+[dependencies]
+thumbnailer-core = { path = "../core" }
+clap = { version = "4", features = ["derive"] }
