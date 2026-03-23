@@ -6,11 +6,11 @@ use std::sync::{
 
 use clap::{Parser, ValueEnum};
 use thumbnailer_core::{
-    BarPosition, MetadataField, OutputFormat, OverlayConfig, ThumbnailConfig, ThumbnailMode,
-    TimestampPosition, check_ffmpeg, process_video,
+    BarLayout, BarPosition, FontSizing, MetadataField, OutputFormat, OverlayConfig,
+    ThumbnailConfig, ThumbnailMode, TimestampPosition, check_ffmpeg, process_video,
 };
 
-// ── CLI argument types ────────────────────────────────────────────────────────
+//  CLI argument types 
 #[derive(Clone, Debug, ValueEnum)]
 enum CliFormat {
     Jpg,
@@ -43,6 +43,29 @@ enum CliBarPos {
 }
 
 #[derive(Clone, Debug, ValueEnum)]
+enum CliBarLayout {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum CliFontSizing {
+    Auto,
+    Pixels,
+    Percent,
+}
+
+impl CliFontSizing {
+    fn to_core(&self) -> FontSizing {
+        match self {
+            CliFontSizing::Auto => FontSizing::Auto,
+            CliFontSizing::Pixels => FontSizing::Pixels,
+            CliFontSizing::Percent => FontSizing::Percent,
+        }
+    }
+}
+
+#[derive(Clone, Debug, ValueEnum)]
 enum CliMetaField {
     Filename,
     Duration,
@@ -54,7 +77,7 @@ enum CliMetaField {
     Bitrate,
 }
 
-// ── Argument struct ───────────────────────────────────────────────────────────
+//  Argument struct 
 #[derive(Parser, Debug)]
 #[command(
     name = "vthumb",
@@ -106,9 +129,10 @@ struct Args {
     #[arg(long, default_value_t = 5, value_name = "N")]
     frames: u32,
 
-    /// Overwrite existing output files.
+    /// Keep existing output files instead of overwriting them.
+    /// (Overwrite is on by default.)
     #[arg(long)]
-    overwrite: bool,
+    no_overwrite: bool,
 
     /// Optional prefix added to every output filename.
     #[arg(long, default_value = "", value_name = "STRING")]
@@ -118,7 +142,11 @@ struct Args {
     #[arg(short, long)]
     recursive: bool,
 
-    // ── Overlay ───────────────────────────────────────────────────────────────
+    /// Disable parallel frame extraction and process frames sequentially.
+    #[arg(long)]
+    no_parallel: bool,
+
+    //  Overlay 
     /// Stamp the current timestamp on each extracted frame.
     #[arg(long)]
     timestamp: bool,
@@ -127,9 +155,19 @@ struct Args {
     #[arg(long, default_value = "bottom-right", value_name = "POS")]
     timestamp_pos: CliTsPos,
 
-    /// Font size (px) for the timestamp overlay.
+    /// Sizing strategy for the timestamp overlay.
+    /// `auto` scales sub-linearly with frame size (recommended for grids).
+    #[arg(long, default_value = "auto", value_name = "MODE")]
+    timestamp_size_mode: CliFontSizing,
+
+    /// Font size (px) for the timestamp overlay. Used when --timestamp-size-mode=pixels.
     #[arg(long, default_value_t = 28, value_name = "PX")]
     timestamp_size: u32,
+
+    /// Timestamp font as percent of `min(width, height)`. Used when
+    /// --timestamp-size-mode=percent.
+    #[arg(long, default_value_t = 5.0, value_name = "PCT")]
+    timestamp_size_percent: f32,
 
     /// Add a dark metadata bar to the image.
     #[arg(long)]
@@ -139,18 +177,36 @@ struct Args {
     #[arg(long, default_value = "top", value_name = "POS")]
     bar_pos: CliBarPos,
 
-    /// Font size (px) for the metadata bar text.
+    /// Sizing strategy for the metadata bar font.
+    /// `auto` scales sub-linearly with the underlying frame height.
+    #[arg(long, default_value = "auto", value_name = "MODE")]
+    bar_size_mode: CliFontSizing,
+
+    /// Bar font size in px. Used when --bar-size-mode=pixels.
     #[arg(long, default_value_t = 22, value_name = "PX")]
     bar_size: u32,
+
+    /// Bar font as percent of the underlying frame height. Used when
+    /// --bar-size-mode=percent.
+    #[arg(long, default_value_t = 5.0, value_name = "PCT")]
+    bar_size_percent: f32,
+
+    /// Layout of the metadata bar: horizontal (single line) or vertical (one field per line).
+    #[arg(long, default_value = "horizontal", value_name = "LAYOUT")]
+    bar_layout: CliBarLayout,
 
     /// Fields shown in the metadata bar (space-separated, repeatable).
     /// Default when --metadata-bar is set: filename duration.
     /// Example: --meta filename duration fps resolution
     #[arg(long = "meta", num_args = 1.., value_name = "FIELD")]
     meta_fields: Vec<CliMetaField>,
+
+    /// Disable the default "Created via …" branding line in the metadata bar.
+    #[arg(long)]
+    no_branding: bool,
 }
 
-// ── Video file extensions considered ─────────────────────────────────────────
+//  Video file extensions considered 
 const VIDEO_EXTS: &[&str] = &[
     "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts",
     "3gp", "ogv", "rmvb", "vob", "divx",
@@ -195,7 +251,7 @@ fn collect_from_dir(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) {
     }
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+//  Main 
 fn main() {
     let args = Args::parse();
 
@@ -221,7 +277,7 @@ fn main() {
         CliFormat::Webp => OutputFormat::Webp,
     };
 
-    // ── Overlay config ────────────────────────────────────────────────────────
+    //  Overlay config 
     let ts_pos = match args.timestamp_pos {
         CliTsPos::BottomRight => TimestampPosition::BottomRight,
         CliTsPos::BottomLeft => TimestampPosition::BottomLeft,
@@ -231,6 +287,10 @@ fn main() {
     let b_pos = match args.bar_pos {
         CliBarPos::Top => BarPosition::Top,
         CliBarPos::Bottom => BarPosition::Bottom,
+    };
+    let b_layout = match args.bar_layout {
+        CliBarLayout::Horizontal => BarLayout::Horizontal,
+        CliBarLayout::Vertical => BarLayout::Vertical,
     };
     // If --metadata-bar is set but no --meta fields given, default to filename + duration.
     let meta_fields: Vec<MetadataField> = if args.metadata_bar && args.meta_fields.is_empty() {
@@ -253,11 +313,17 @@ fn main() {
     let overlay = OverlayConfig {
         show_timestamp: args.timestamp,
         timestamp_position: ts_pos,
+        timestamp_font_sizing: args.timestamp_size_mode.to_core(),
         timestamp_font_size: args.timestamp_size,
+        timestamp_font_size_percent: args.timestamp_size_percent,
         show_metadata_bar: args.metadata_bar,
         bar_position: b_pos,
+        bar_layout: b_layout,
+        bar_font_sizing: args.bar_size_mode.to_core(),
         bar_font_size: args.bar_size,
+        bar_font_size_percent: args.bar_size_percent,
         metadata_fields: meta_fields,
+        show_branding: !args.no_branding,
     };
 
     let config = ThumbnailConfig {
@@ -267,9 +333,10 @@ fn main() {
         max_height: args.max_height,
         format,
         quality: args.quality,
-        overwrite: args.overwrite,
+        overwrite: !args.no_overwrite,
         output_prefix: args.prefix,
         overlay,
+        parallel: !args.no_parallel,
     };
 
     let files = collect_videos(args.input, args.recursive);

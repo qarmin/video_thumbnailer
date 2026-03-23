@@ -15,6 +15,9 @@ binaries:
 gui *ARGS:
     cargo run -p thumbnailer-gui -- {{ARGS}}
 
+guir *ARGS:
+    cargo run -p thumbnailer-gui --release -- {{ARGS}}
+
 cli *ARGS:
     cargo run -p thumbnailer-cli -- {{ARGS}}
 
@@ -28,6 +31,8 @@ clippy:
     cargo clippy --workspace --all-targets --all-features
 
 fix:
+    grep -rlZ --include="*.rs" "─" . | xargs -0 sed -i 's/─//g' || true
+    grep -rlZ --include="*.slint" "─" . | xargs -0 sed -i 's/─//g' || true
     cargo clippy --workspace --all-targets --all-features --fix --allow-dirty --allow-staged
 
 fmt:

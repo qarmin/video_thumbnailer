@@ -1,0 +1,31 @@
+import { Button, GroupBox, HorizontalBox, VerticalBox, StandardListView } from "std-widgets.slint";
+import { Callabler, Strings } from "../globals.slint";
+
+export component FilesPanel inherits GroupBox {
+    title: Strings.input-files + " (" + file-count + ")";
+    min-width: 360px;
+    max-width: 520px;
+    vertical-stretch: 1;
+
+    in property <int> file-count: 0;
+    in property <[StandardListViewItem]> file-items;
+
+    VerticalBox {
+        list-view := StandardListView {
+            model: file-items;
+            min-height: 240px;
+            vertical-stretch: 1;
+        }
+        HorizontalBox {
+            spacing: 4px;
+            Button { text: Strings.add-files;   clicked => { Callabler.add-files();   } }
+            Button { text: Strings.add-folder;  clicked => { Callabler.add-folder();  } }
+            Button {
+                text: Strings.remove;
+                enabled: list-view.current-item >= 0;
+                clicked => { Callabler.remove-selected(list-view.current-item); }
+            }
+            Button { text: Strings.clear;       clicked => { Callabler.clear-files(); } }
+        }
+    }
+}

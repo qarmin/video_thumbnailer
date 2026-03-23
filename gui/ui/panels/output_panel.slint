@@ -1,0 +1,47 @@
+import { Button, ComboBox, GroupBox, HorizontalBox, LineEdit, SpinBox, VerticalBox } from "std-widgets.slint";
+import { Callabler, EnumIndex, Settings, Strings } from "../globals.slint";
+
+export component OutputPanel inherits GroupBox {
+    title: Strings.output-group;
+
+    VerticalBox {
+        spacing: 4px;
+
+        HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.directory; vertical-alignment: center; min-width: 72px; }
+            LineEdit {
+                text <=> Settings.output-dir;
+                placeholder-text: Strings.output-placeholder;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: Strings.browse;
+                clicked => { Callabler.select-output-dir(); }
+            }
+        }
+
+        HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.format; vertical-alignment: center; min-width: 72px; }
+            ComboBox {
+                model: [Strings.format-jpeg, Strings.format-png, Strings.format-webp];
+                current-index: EnumIndex.format-to-index(Settings.output-format);
+                selected(value) => {
+                    Settings.output-format = EnumIndex.index-to-format(self.current-index);
+                }
+                min-width: 90px;
+            }
+            Text { text: Strings.quality; vertical-alignment: center; }
+            SpinBox { value <=> Settings.quality; minimum: 1; maximum: 100; min-width: 80px; }
+        }
+
+        HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.max-width; vertical-alignment: center; min-width: 72px; }
+            SpinBox { value <=> Settings.frame-max-width;  minimum: 64; maximum: 16000; min-width: 90px; }
+            Text { text: Strings.max-height; vertical-alignment: center; }
+            SpinBox { value <=> Settings.frame-max-height; minimum: 64; maximum: 16000; min-width: 90px; }
+        }
+    }
+}

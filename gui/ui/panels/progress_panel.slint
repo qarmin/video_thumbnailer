@@ -1,0 +1,94 @@
+import { Button } from "std-widgets.slint";
+import { Callabler, GuiState, Settings, Strings, Theme } from "../globals.slint";
+
+component ProgressBar inherits Rectangle {
+    height: 24px;
+    border-radius: 6px;
+    background: Theme.bar-track;
+    clip: true;
+
+    property <float> clamped: max(0, min(1, GuiState.progress));
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width * clamped;
+        height: parent.height;
+        border-radius: 6px;
+        background: Theme.bar-fill;
+    }
+    Text {
+        x: 0; y: 0;
+        width: parent.width; height: parent.height;
+        text: floor(clamped * 100) + "%";
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        color: clamped > 0.55 ? Theme.bar-text-on-fill : Theme.bar-text-off-fill;
+        font-weight: 600;
+    }
+}
+
+// Status text + secondary buttons + Start/Stop, all locked to a fixed row height
+// so the Start button can't grow vertically with the window.
+component StatusRow inherits Rectangle {
+    in property <bool> has-files;
+    height: 40px;
+    vertical-stretch: 0;
+
+    HorizontalLayout {
+        spacing: 8px;
+        padding: 0px;
+        alignment: stretch;
+
+        // Status text — left side, takes remaining space
+        Text {
+            text: GuiState.status-text;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+            color: Theme.bar-text-off-fill;
+        }
+
+        // Centre cluster: Repository + theme toggle
+        Button {
+            text: Strings.repository;
+            height: 32px;
+            clicked => { Callabler.open-repository(); }
+        }
+        Button {
+            text: Settings.dark-theme ? Strings.light-mode : Strings.dark-mode;
+            height: 32px;
+            clicked => {
+                Settings.dark-theme = !Settings.dark-theme;
+                Callabler.toggle-theme();
+            }
+        }
+
+        // Right side: Start / Stop
+        Button {
+            text: GuiState.is-processing ? Strings.stop-button : Strings.start-button;
+            height: 32px;
+            min-width: 90px;
+            enabled: GuiState.is-processing || has-files;
+            primary: !GuiState.is-processing;
+            clicked => {
+                if (GuiState.is-processing) {
+                    Callabler.stop-processing();
+                } else {
+                    Callabler.start();
+                }
+            }
+        }
+    }
+}
+
+export component ProgressPanel {
+    in property <bool> has-files;
+    vertical-stretch: 0;
+
+    VerticalLayout {
+        spacing: 6px;
+        ProgressBar { }
+        StatusRow { has-files: root.has-files; }
+    }
+}

@@ -1,7 +1,12 @@
 [package]
 name = "thumbnailer-cli"
-version = "0.1.0"
+version = "1.0.0"
+authors = ["Rafał Mikrut <mikrutrafal@protonmail.com>"]
 edition = "2024"
+description = "Cli version for video thumbnailer"
+license = "MIT"
+homepage = "https://github.com/qarmin/video_thumbnailer"
+repository = "https://github.com/qarmin/video_thumbnailer"
 
 [[bin]]
 name = "vthumb"

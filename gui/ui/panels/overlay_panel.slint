@@ -1,0 +1,141 @@
+import { CheckBox, ComboBox, GroupBox, HorizontalBox, SpinBox, VerticalBox } from "std-widgets.slint";
+import { EnumIndex, FontSize, Settings, Strings, Theme } from "../globals.slint";
+
+// Inline row that exposes the right input(s) for the active sizing mode.
+// `mode-binding` is read-only here; the parent owns the source of truth.
+component SizeModeRow inherits HorizontalBox {
+    spacing: 6px;
+    in-out property <FontSize> mode;
+    in-out property <int> px-value;
+    in-out property <int> percent-value;
+    // Default percent step uses min(width, height); the bar uses height.
+    // Hint text is supplied by parent.
+    in property <string> auto-hint;
+
+    Text {
+        text: Strings.size-mode;
+        vertical-alignment: center;
+        min-width: 72px;
+        color: Theme.bar-text-off-fill;
+    }
+    ComboBox {
+        model: [Strings.size-mode-auto, Strings.size-mode-pixels, Strings.size-mode-percent];
+        current-index: EnumIndex.font-size-to-index(mode);
+        selected(value) => {
+            mode = EnumIndex.index-to-font-size(self.current-index);
+        }
+        min-width: 110px;
+    }
+    if mode == FontSize.pixels : SpinBox {
+        value: px-value;
+        edited(v) => { px-value = v; }
+        minimum: 8; maximum: 96; min-width: 75px;
+    }
+    if mode == FontSize.pixels : Text {
+        text: Strings.percent-px-hint;
+        vertical-alignment: center;
+        color: Theme.hint-text;
+    }
+    if mode == FontSize.percent : SpinBox {
+        value: percent-value;
+        edited(v) => { percent-value = v; }
+        minimum: 1; maximum: 30; min-width: 75px;
+    }
+    if mode == FontSize.percent : Text {
+        text: Strings.percent-of-height;
+        vertical-alignment: center;
+        color: Theme.hint-text;
+    }
+    if mode == FontSize.auto : Text {
+        text: auto-hint;
+        vertical-alignment: center;
+        color: Theme.hint-text;
+    }
+}
+
+// Metadata-field checkboxes (used twice, top and bottom rows).
+component FieldRow inherits HorizontalBox {
+    spacing: 8px;
+    @children
+}
+
+export component OverlayPanel inherits GroupBox {
+    title: Strings.overlays-group;
+
+    VerticalBox {
+        spacing: 4px;
+
+        // Timestamp overlay
+        CheckBox { text: Strings.stamp-timestamp; checked <=> Settings.show-timestamp; }
+        if Settings.show-timestamp : HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.position; vertical-alignment: center; min-width: 72px; color: Theme.bar-text-off-fill; }
+            ComboBox {
+                model: [Strings.ts-bottom-right, Strings.ts-bottom-left, Strings.ts-top-right, Strings.ts-top-left];
+                current-index: EnumIndex.ts-pos-to-index(Settings.timestamp-pos);
+                selected(value) => {
+                    Settings.timestamp-pos = EnumIndex.index-to-ts-pos(self.current-index);
+                }
+                min-width: 130px;
+            }
+        }
+        if Settings.show-timestamp : SizeModeRow {
+            mode <=> Settings.timestamp-size-mode;
+            px-value <=> Settings.timestamp-size;
+            percent-value <=> Settings.timestamp-size-percent;
+            auto-hint: Strings.auto-hint;
+        }
+
+        // Metadata bar
+        CheckBox { text: Strings.add-meta-bar; checked <=> Settings.show-meta-bar; }
+
+        if Settings.show-meta-bar : HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.position; vertical-alignment: center; min-width: 72px; color: Theme.bar-text-off-fill; }
+            ComboBox {
+                model: [Strings.bar-top, Strings.bar-bottom];
+                current-index: EnumIndex.bar-pos-to-index(Settings.bar-pos);
+                selected(value) => {
+                    Settings.bar-pos = EnumIndex.index-to-bar-pos(self.current-index);
+                }
+                min-width: 90px;
+            }
+            Text { text: Strings.layout; vertical-alignment: center; color: Theme.bar-text-off-fill; }
+            ComboBox {
+                model: [Strings.layout-horizontal, Strings.layout-vertical];
+                current-index: EnumIndex.bar-layout-to-index(Settings.bar-layout);
+                selected(value) => {
+                    Settings.bar-layout = EnumIndex.index-to-bar-layout(self.current-index);
+                }
+                min-width: 110px;
+            }
+        }
+        if Settings.show-meta-bar : SizeModeRow {
+            mode <=> Settings.bar-size-mode;
+            px-value <=> Settings.bar-size;
+            percent-value <=> Settings.bar-size-percent;
+            auto-hint: Strings.auto-hint;
+        }
+
+        if Settings.show-meta-bar : CheckBox {
+            text: Strings.branding-text;
+            checked <=> Settings.show-branding;
+        }
+
+        if Settings.show-meta-bar : FieldRow {
+            Text { text: Strings.fields; vertical-alignment: center; min-width: 72px; color: Theme.bar-text-off-fill; }
+            CheckBox { text: Strings.field-filename;   checked <=> Settings.meta-filename; }
+            CheckBox { text: Strings.field-duration;   checked <=> Settings.meta-duration; }
+            CheckBox { text: Strings.field-fps;        checked <=> Settings.meta-fps; }
+            CheckBox { text: Strings.field-resolution; checked <=> Settings.meta-resolution; }
+        }
+
+        if Settings.show-meta-bar : FieldRow {
+            Text { text: ""; min-width: 72px; }
+            CheckBox { text: Strings.field-filesize;  checked <=> Settings.meta-filesize; }
+            CheckBox { text: Strings.field-timestamp; checked <=> Settings.meta-timestamp; }
+            CheckBox { text: Strings.field-codec;     checked <=> Settings.meta-codec; }
+            CheckBox { text: Strings.field-bitrate;   checked <=> Settings.meta-bitrate; }
+        }
+    }
+}

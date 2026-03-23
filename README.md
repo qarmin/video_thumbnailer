@@ -1,7 +1,7 @@
 # Video thumbnailer
 This project is a simple ai created wrapper on thumbnail generator, available in czkawka
 
-To use it, clone project and compile it via `cargo build --release` or use precompiled version, in github releases. 
+To use it, clone project and compile it via `cargo build --release` or use precompiled version from github releases page(windows and linux binaries) - https://github.com/qarmin/video_thumbnailer/releases
 
 Example of generated thumbnail:
 

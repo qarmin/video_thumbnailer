@@ -1,0 +1,228 @@
+// Shared enums, globals, and theme palette.
+
+export enum OutputFormat { jpeg, png, webp }
+export enum ThumbMode { single, grid, sequence }
+export enum TimestampCorner { bottom-right, bottom-left, top-right, top-left }
+export enum BarSide { top, bottom }
+export enum BarLayoutMode { horizontal, vertical }
+export enum FontSize { auto, pixels, percent }
+
+// All persisted user choices live here.
+export global Settings {
+    in-out property <string> output-dir: "";
+    in-out property <OutputFormat> output-format: OutputFormat.jpeg;
+    in-out property <int> quality: 85;
+    in-out property <int> frame-max-width: 1920;
+    in-out property <int> frame-max-height: 1080;
+
+    in-out property <ThumbMode> mode: ThumbMode.single;
+    in-out property <int> seek-percent: 10;
+    in-out property <int> grid-cols: 3;
+    in-out property <int> grid-rows: 3;
+    in-out property <int> frame-count: 5;
+
+    in-out property <bool> overwrite: true;
+    in-out property <string> prefix: "";
+
+    in-out property <bool> show-timestamp: false;
+    in-out property <TimestampCorner> timestamp-pos: TimestampCorner.bottom-right;
+    in-out property <FontSize> timestamp-size-mode: FontSize.auto;
+    in-out property <int> timestamp-size: 28;
+    in-out property <int> timestamp-size-percent: 5;
+
+    in-out property <bool> show-meta-bar: false;
+    in-out property <BarSide> bar-pos: BarSide.top;
+    in-out property <BarLayoutMode> bar-layout: BarLayoutMode.horizontal;
+    in-out property <FontSize> bar-size-mode: FontSize.auto;
+    in-out property <int> bar-size: 22;
+    in-out property <int> bar-size-percent: 5;
+    in-out property <bool> show-branding: true;
+
+    in-out property <bool> meta-filename: true;
+    in-out property <bool> meta-duration: true;
+    in-out property <bool> meta-fps: false;
+    in-out property <bool> meta-resolution: false;
+    in-out property <bool> meta-filesize: false;
+    in-out property <bool> meta-timestamp: false;
+    in-out property <bool> meta-codec: false;
+    in-out property <bool> meta-bitrate: false;
+
+    in-out property <bool> dark-theme: false;
+}
+
+// Transient UI state (not persisted).
+export global GuiState {
+    in-out property <float> progress: 0;
+    in-out property <string> status-text: "Ready";
+    in-out property <bool> is-processing: false;
+    in-out property <string> log-text: "";
+}
+
+// All Rust-implemented callbacks bundled in a single global.
+export global Callabler {
+    callback add-files();
+    callback add-folder();
+    callback clear-files();
+    callback remove-selected(int);
+    callback select-output-dir();
+    callback start();
+    callback stop-processing();
+    callback open-repository();
+    callback toggle-theme();
+}
+
+// Bridges Slint enums to ComboBox `current-index` (which is an int).
+// Keeps int discriminants in one place instead of scattered through bindings.
+export global EnumIndex {
+    public pure function format-to-index(f: OutputFormat) -> int {
+        if f == OutputFormat.jpeg { return 0; }
+        if f == OutputFormat.png { return 1; }
+        return 2;
+    }
+    public pure function index-to-format(i: int) -> OutputFormat {
+        if i == 0 { return OutputFormat.jpeg; }
+        if i == 1 { return OutputFormat.png; }
+        return OutputFormat.webp;
+    }
+
+    public pure function mode-to-index(m: ThumbMode) -> int {
+        if m == ThumbMode.single { return 0; }
+        if m == ThumbMode.grid { return 1; }
+        return 2;
+    }
+    public pure function index-to-mode(i: int) -> ThumbMode {
+        if i == 0 { return ThumbMode.single; }
+        if i == 1 { return ThumbMode.grid; }
+        return ThumbMode.sequence;
+    }
+
+    public pure function ts-pos-to-index(p: TimestampCorner) -> int {
+        if p == TimestampCorner.bottom-right { return 0; }
+        if p == TimestampCorner.bottom-left { return 1; }
+        if p == TimestampCorner.top-right { return 2; }
+        return 3;
+    }
+    public pure function index-to-ts-pos(i: int) -> TimestampCorner {
+        if i == 0 { return TimestampCorner.bottom-right; }
+        if i == 1 { return TimestampCorner.bottom-left; }
+        if i == 2 { return TimestampCorner.top-right; }
+        return TimestampCorner.top-left;
+    }
+
+    public pure function bar-pos-to-index(p: BarSide) -> int {
+        if p == BarSide.top { return 0; }
+        return 1;
+    }
+    public pure function index-to-bar-pos(i: int) -> BarSide {
+        if i == 0 { return BarSide.top; }
+        return BarSide.bottom;
+    }
+
+    public pure function bar-layout-to-index(l: BarLayoutMode) -> int {
+        if l == BarLayoutMode.horizontal { return 0; }
+        return 1;
+    }
+    public pure function index-to-bar-layout(i: int) -> BarLayoutMode {
+        if i == 0 { return BarLayoutMode.horizontal; }
+        return BarLayoutMode.vertical;
+    }
+
+    public pure function font-size-to-index(f: FontSize) -> int {
+        if f == FontSize.auto { return 0; }
+        if f == FontSize.pixels { return 1; }
+        return 2;
+    }
+    public pure function index-to-font-size(i: int) -> FontSize {
+        if i == 0 { return FontSize.auto; }
+        if i == 1 { return FontSize.pixels; }
+        return FontSize.percent;
+    }
+}
+
+// Centralised colors — every value branches on Settings.dark-theme.
+export global Theme {
+    out property <color> window-bg:        Settings.dark-theme ? #1f1f1f : #ffffff;
+    out property <color> bar-track:        Settings.dark-theme ? #3a3a3a : #e0e0e0;
+    out property <color> bar-fill:         #4CAF50;
+    out property <color> bar-text-on-fill: #ffffff;
+    out property <color> bar-text-off-fill: Settings.dark-theme ? #e8e8e8 : #333333;
+    out property <color> hint-text:        Settings.dark-theme ? #aaaaaa : #888888;
+}
+
+// String table — UI labels go here so a future translation step has one place to touch.
+export global Strings {
+    out property <string> repository: "Repository";
+    out property <string> dark-mode: "Dark mode";
+    out property <string> light-mode: "Light mode";
+
+    out property <string> input-files: "Input Files";
+    out property <string> add-files: "Add Files";
+    out property <string> add-folder: "Add Folder";
+    out property <string> remove: "Remove";
+    out property <string> clear: "Clear";
+
+    out property <string> output-group: "Output";
+    out property <string> directory: "Directory:";
+    out property <string> output-placeholder: "(same as input file)";
+    out property <string> browse: "Browse";
+    out property <string> format: "Format:";
+    out property <string> quality: "Quality:";
+    out property <string> max-width: "Max width:";
+    out property <string> max-height: "height:";
+
+    out property <string> mode-group: "Mode";
+    out property <string> mode-label: "Mode:";
+    out property <string> mode-single: "Single frame";
+    out property <string> mode-grid: "Grid (NxM)";
+    out property <string> mode-sequence: "Sequence";
+    out property <string> seek-percent: "Seek %:";
+    out property <string> seek-hint: "(0 = start, 50 = middle, 100 = end)";
+    out property <string> cols: "Cols:";
+    out property <string> rows: "Rows:";
+    out property <string> frames: "Frames:";
+    out property <string> sequence-hint: "(saved as separate files)";
+
+    out property <string> options-group: "Options";
+    out property <string> overwrite-text: "Overwrite existing output files";
+    out property <string> prefix-label: "Prefix:";
+    out property <string> prefix-placeholder: "Optional filename prefix";
+
+    out property <string> overlays-group: "Overlays  (requires a TTF font on the system)";
+    out property <string> stamp-timestamp: "Stamp timestamp on each frame";
+    out property <string> position: "Position:";
+    out property <string> size-px: "Size (px):";
+    out property <string> add-meta-bar: "Add metadata bar";
+    out property <string> layout: "Layout:";
+    out property <string> size-mode: "Size mode:";
+    out property <string> size-mode-auto: "Auto";
+    out property <string> size-mode-pixels: "Pixels";
+    out property <string> size-mode-percent: "Percent";
+    out property <string> auto-hint: "(scales with frame; readable on small tiles and large frames)";
+    out property <string> percent-of-height: "%";
+    out property <string> percent-px-hint: "px";
+    out property <string> branding-text: "Append 'Created via video-thumbnailer — github.com/qarmin/video_thumbnailer' line";
+    out property <string> fields: "Fields:";
+    out property <string> field-filename: "Filename";
+    out property <string> field-duration: "Duration";
+    out property <string> field-fps: "FPS";
+    out property <string> field-resolution: "Resolution";
+    out property <string> field-filesize: "File size";
+    out property <string> field-timestamp: "Timestamp";
+    out property <string> field-codec: "Codec";
+    out property <string> field-bitrate: "Bitrate";
+
+    out property <string> ts-bottom-right: "Bottom-right";
+    out property <string> ts-bottom-left: "Bottom-left";
+    out property <string> ts-top-right: "Top-right";
+    out property <string> ts-top-left: "Top-left";
+    out property <string> bar-top: "Top";
+    out property <string> bar-bottom: "Bottom";
+    out property <string> layout-horizontal: "Horizontal";
+    out property <string> layout-vertical: "Vertical";
+    out property <string> format-jpeg: "JPEG";
+    out property <string> format-png: "PNG";
+    out property <string> format-webp: "WebP";
+
+    out property <string> start-button: "Start";
+    out property <string> stop-button: "Stop";
+}

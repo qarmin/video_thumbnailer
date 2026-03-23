@@ -1,0 +1,58 @@
+import { ComboBox, GroupBox, HorizontalBox, SpinBox, VerticalBox } from "std-widgets.slint";
+import { EnumIndex, Settings, Strings, Theme, ThumbMode } from "../globals.slint";
+
+export component ModePanel inherits GroupBox {
+    title: Strings.mode-group;
+
+    VerticalBox {
+        spacing: 4px;
+
+        HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.mode-label; vertical-alignment: center; min-width: 72px; }
+            ComboBox {
+                model: [Strings.mode-single, Strings.mode-grid, Strings.mode-sequence];
+                current-index: EnumIndex.mode-to-index(Settings.mode);
+                selected(value) => {
+                    Settings.mode = EnumIndex.index-to-mode(self.current-index);
+                }
+                min-width: 160px;
+            }
+        }
+
+        if Settings.mode == ThumbMode.single : HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.seek-percent; vertical-alignment: center; min-width: 72px; }
+            SpinBox { value <=> Settings.seek-percent; minimum: 0; maximum: 100; min-width: 80px; }
+            Text {
+                text: Strings.seek-hint;
+                vertical-alignment: center;
+                color: Theme.hint-text;
+            }
+        }
+
+        if Settings.mode == ThumbMode.grid : HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.cols; vertical-alignment: center; min-width: 72px; }
+            SpinBox { value <=> Settings.grid-cols; minimum: 1; maximum: 1000; min-width: 80px; }
+            Text { text: Strings.rows; vertical-alignment: center; }
+            SpinBox { value <=> Settings.grid-rows; minimum: 1; maximum: 1000; min-width: 80px; }
+            Text {
+                text: "→ " + (Settings.grid-cols * Settings.grid-rows) + " frames";
+                vertical-alignment: center;
+                color: Theme.hint-text;
+            }
+        }
+
+        if Settings.mode == ThumbMode.sequence : HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.frames; vertical-alignment: center; min-width: 72px; }
+            SpinBox { value <=> Settings.frame-count; minimum: 1; maximum: 500; min-width: 80px; }
+            Text {
+                text: Strings.sequence-hint;
+                vertical-alignment: center;
+                color: Theme.hint-text;
+            }
+        }
+    }
+}

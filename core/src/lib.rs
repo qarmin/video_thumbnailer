@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use image::{DynamicImage, GenericImage, RgbImage};
 use serde::{Deserialize, Serialize};
 
-// ── Windows: suppress console popup ──────────────────────────────────────────
+//  Windows: suppress console popup 
 #[cfg(target_os = "windows")]
 fn hide_console(cmd: &mut Command) {
     use std::os::windows::process::CommandExt;
@@ -15,7 +15,7 @@ fn hide_console(cmd: &mut Command) {
 #[cfg(not(target_os = "windows"))]
 fn hide_console(_cmd: &mut Command) {}
 
-// ── ffmpeg / ffprobe availability ─────────────────────────────────────────────
+//  ffmpeg / ffprobe availability 
 pub fn check_ffmpeg() -> bool {
     let check = |bin: &str| {
         let mut cmd = Command::new(bin);
@@ -30,7 +30,7 @@ pub fn check_ffmpeg() -> bool {
     check("ffmpeg") && check("ffprobe")
 }
 
-// ── ffprobe JSON structures ───────────────────────────────────────────────────
+//  ffprobe JSON structures 
 #[derive(Debug, Deserialize)]
 struct ProbeOutput {
     #[serde(default)]
@@ -73,7 +73,7 @@ fn parse_fps(s: &str) -> Option<f64> {
     }
 }
 
-// ── Video metadata ────────────────────────────────────────────────────────────
+//  Video metadata 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VideoMetadata {
     pub fps: Option<f64>,
@@ -148,7 +148,7 @@ impl VideoMetadata {
     }
 }
 
-// ── Config types ──────────────────────────────────────────────────────────────
+//  Config types 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum OutputFormat {
     #[default]
@@ -183,7 +183,7 @@ impl Default for ThumbnailMode {
     }
 }
 
-// ── Overlay config ────────────────────────────────────────────────────────────
+//  Overlay config 
 /// Where to stamp the timestamp on each frame.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum TimestampPosition {
@@ -202,6 +202,40 @@ pub enum BarPosition {
     Bottom,
 }
 
+/// How the metadata bar arranges its fields.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub enum BarLayout {
+    /// All fields joined into a single line with " | " separators.
+    #[default]
+    Horizontal,
+    /// Each field on its own line, stacked vertically.
+    Vertical,
+}
+
+/// How a font size is determined for an overlay.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub enum FontSizing {
+    /// Sublinear auto-fit. Stays readable on small grid tiles and doesn't
+    /// take excessive space on large single frames.
+    #[default]
+    Auto,
+    /// Fixed pixel size, ignoring frame dimensions.
+    Pixels,
+    /// Percent of the relevant frame dimension. Simple but doesn't behave
+    /// well across very different image sizes (e.g. grid tiles vs. single frames).
+    Percent,
+}
+
+/// Sublinear font size auto-fit: `clamp(MIN, MAX, k * sqrt(dim) + b)`.
+/// Tuned so a 108-px tile gets ~11px and a 1080-px frame gets ~30px.
+fn auto_font_size(dim: u32) -> f32 {
+    const MIN: f32 = 10.0;
+    const MAX: f32 = 80.0;
+    const SLOPE: f32 = 0.85;
+    const OFFSET: f32 = 2.0;
+    (SLOPE * (dim as f32).sqrt() + OFFSET).clamp(MIN, MAX)
+}
+
 /// Fields that may appear in the metadata bar.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum MetadataField {
@@ -216,22 +250,34 @@ pub enum MetadataField {
     Bitrate,
 }
 
+pub const BRANDING_TEXT: &str =
+    "Created via video-thumbnailer — github.com/qarmin/video_thumbnailer";
+
 /// Overlay and metadata-bar configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverlayConfig {
     /// Draw the current timestamp on each extracted frame.
     pub show_timestamp: bool,
     pub timestamp_position: TimestampPosition,
-    /// Font size in pixels for the timestamp overlay.
+    pub timestamp_font_sizing: FontSizing,
+    /// Used when `timestamp_font_sizing == Pixels`.
     pub timestamp_font_size: u32,
+    /// Used when `timestamp_font_sizing == Percent`. Percent of `min(width, height)`.
+    pub timestamp_font_size_percent: f32,
 
     /// Add a dark bar with metadata to the image.
     pub show_metadata_bar: bool,
     pub bar_position: BarPosition,
-    /// Font size in pixels for the metadata bar text.
+    pub bar_layout: BarLayout,
+    pub bar_font_sizing: FontSizing,
+    /// Used when `bar_font_sizing == Pixels`.
     pub bar_font_size: u32,
+    /// Used when `bar_font_sizing == Percent`. Percent of the underlying frame height.
+    pub bar_font_size_percent: f32,
     /// Which fields to include in the metadata bar (displayed in order).
     pub metadata_fields: Vec<MetadataField>,
+    /// Append a final branding line to the metadata bar.
+    pub show_branding: bool,
 }
 
 impl Default for OverlayConfig {
@@ -239,16 +285,22 @@ impl Default for OverlayConfig {
         Self {
             show_timestamp: false,
             timestamp_position: TimestampPosition::default(),
+            timestamp_font_sizing: FontSizing::default(),
             timestamp_font_size: 28,
+            timestamp_font_size_percent: 5.0,
             show_metadata_bar: false,
             bar_position: BarPosition::default(),
+            bar_layout: BarLayout::default(),
+            bar_font_sizing: FontSizing::default(),
             bar_font_size: 22,
+            bar_font_size_percent: 5.0,
             metadata_fields: Vec::new(),
+            show_branding: true,
         }
     }
 }
 
-// ── Main config ───────────────────────────────────────────────────────────────
+//  Main config 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThumbnailConfig {
     /// `None` → output next to the source file.
@@ -265,6 +317,8 @@ pub struct ThumbnailConfig {
     /// Optional string prepended to every output filename.
     pub output_prefix: String,
     pub overlay: OverlayConfig,
+    /// Extract frames in parallel using all available CPU cores (default: true).
+    pub parallel: bool,
 }
 
 impl Default for ThumbnailConfig {
@@ -279,11 +333,12 @@ impl Default for ThumbnailConfig {
             overwrite: false,
             output_prefix: String::new(),
             overlay: OverlayConfig::default(),
+            parallel: true,
         }
     }
 }
 
-// ── Frame extraction ──────────────────────────────────────────────────────────
+//  Frame extraction 
 /// Extract a single frame from `video_path` at `timestamp` seconds.
 /// The frame is scaled down to fit within `max_width` × `max_height`
 /// while preserving the original aspect ratio.
@@ -334,7 +389,7 @@ pub fn extract_frame(
     Ok(img.into_rgb8())
 }
 
-// ── Image saving ──────────────────────────────────────────────────────────────
+//  Image saving 
 fn save_image(
     img: &RgbImage,
     path: &Path,
@@ -363,7 +418,7 @@ fn save_image(
     }
 }
 
-// ── Text / overlay helpers ────────────────────────────────────────────────────
+//  Text / overlay helpers 
 
 /// Try to load a TTF/OTF font from well-known system paths.
 /// Returns `None` if nothing is found; overlays are silently skipped in that case.
@@ -516,58 +571,99 @@ fn fmt_bitrate(bps: u64) -> String {
     }
 }
 
-/// Build the metadata bar string from selected fields.
-fn build_bar_text(
+/// Build a (label, formatted value) pair for `field`, or `None` if the value is
+/// missing. `layout` is consulted only when the unit-suffix would duplicate the
+/// label (e.g. "FPS: 30.00 fps" is silly; with the label we drop the suffix).
+fn field_entry(
+    field: &MetadataField,
+    meta: &VideoMetadata,
+    video_path: &Path,
+    file_size: u64,
+    timestamp: f64,
+    layout: &BarLayout,
+) -> Option<(&'static str, String)> {
+    match field {
+        MetadataField::Filename => video_path
+            .file_name()
+            .map(|n| ("File", n.to_string_lossy().into_owned())),
+        MetadataField::Duration => meta.duration.map(|d| ("Duration", fmt_timestamp(d))),
+        MetadataField::Fps => meta.fps.map(|fps| {
+            let value = match layout {
+                BarLayout::Vertical => format!("{fps:.2}"),
+                BarLayout::Horizontal => format!("{fps:.2} fps"),
+            };
+            ("FPS", value)
+        }),
+        MetadataField::Resolution => match (meta.width, meta.height) {
+            (Some(w), Some(h)) => Some(("Resolution", format!("{w}×{h}"))),
+            _ => None,
+        },
+        MetadataField::FileSize => (file_size > 0).then(|| ("Size", fmt_file_size(file_size))),
+        MetadataField::Timestamp => Some(("Time", fmt_timestamp(timestamp))),
+        MetadataField::Codec => meta.codec.as_ref().map(|c| ("Codec", c.to_uppercase())),
+        MetadataField::Bitrate => meta.bitrate.map(|br| ("Bitrate", fmt_bitrate(br))),
+    }
+}
+
+/// Build the metadata bar lines from selected fields, layout, and branding flag.
+/// Horizontal layout joins bare values with " | ". Vertical layout prefixes each
+/// line with the field label, e.g. "Duration: 12:34".
+fn build_bar_lines(
     fields: &[MetadataField],
     meta: &VideoMetadata,
     video_path: &Path,
     file_size: u64,
     timestamp: f64,
-) -> String {
+    layout: &BarLayout,
+    show_branding: bool,
+) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
     for f in fields {
-        match f {
-            MetadataField::Filename => {
-                if let Some(n) = video_path.file_name() {
-                    parts.push(n.to_string_lossy().into_owned());
-                }
-            }
-            MetadataField::Duration => {
-                if let Some(d) = meta.duration {
-                    parts.push(fmt_timestamp(d));
-                }
-            }
-            MetadataField::Fps => {
-                if let Some(fps) = meta.fps {
-                    parts.push(format!("{fps:.2} fps"));
-                }
-            }
-            MetadataField::Resolution => {
-                if let (Some(w), Some(h)) = (meta.width, meta.height) {
-                    parts.push(format!("{w}×{h}"));
-                }
-            }
-            MetadataField::FileSize => {
-                if file_size > 0 {
-                    parts.push(fmt_file_size(file_size));
-                }
-            }
-            MetadataField::Timestamp => {
-                parts.push(fmt_timestamp(timestamp));
-            }
-            MetadataField::Codec => {
-                if let Some(c) = &meta.codec {
-                    parts.push(c.to_uppercase());
-                }
-            }
-            MetadataField::Bitrate => {
-                if let Some(br) = meta.bitrate {
-                    parts.push(fmt_bitrate(br));
-                }
+        let Some((label, value)) = field_entry(f, meta, video_path, file_size, timestamp, layout)
+        else {
+            continue;
+        };
+        let line = match layout {
+            BarLayout::Horizontal => value,
+            BarLayout::Vertical => format!("{label}: {value}"),
+        };
+        parts.push(line);
+    }
+
+    let mut lines: Vec<String> = match layout {
+        BarLayout::Horizontal => {
+            if parts.is_empty() {
+                Vec::new()
+            } else {
+                vec![parts.join("  |  ")]
             }
         }
+        BarLayout::Vertical => parts,
+    };
+    if show_branding {
+        lines.push(BRANDING_TEXT.to_string());
     }
-    parts.join("  |  ")
+    lines
+}
+
+/// Effective metadata-bar font size in pixels, given the underlying frame height.
+fn resolve_bar_font_size(ov: &OverlayConfig, frame_height: u32) -> f32 {
+    match ov.bar_font_sizing {
+        FontSizing::Auto => auto_font_size(frame_height),
+        FontSizing::Pixels => ov.bar_font_size as f32,
+        FontSizing::Percent => (ov.bar_font_size_percent / 100.0) * frame_height as f32,
+    }
+}
+
+/// Effective timestamp font size in pixels, based on the shorter frame dimension so
+/// the stamp doesn't dominate landscape OR portrait crops.
+fn resolve_timestamp_font_size(ov: &OverlayConfig, frame_w: u32, frame_h: u32) -> f32 {
+    let dim = frame_w.min(frame_h);
+    match ov.timestamp_font_sizing {
+        FontSizing::Auto => auto_font_size(dim),
+        FontSizing::Pixels => ov.timestamp_font_size as f32,
+        FontSizing::Percent => (ov.timestamp_font_size_percent / 100.0) * dim as f32,
+    }
 }
 
 /// Stamp the frame timestamp in a corner of `img`.
@@ -576,13 +672,15 @@ fn apply_timestamp(
     font: &ab_glyph::FontArc,
     timestamp: f64,
     position: &TimestampPosition,
-    font_size: u32,
+    font_size: f32,
 ) {
+    if font_size < 1.0 {
+        return;
+    }
     let text = fmt_timestamp(timestamp);
-    let fs = font_size as f32;
     let pad = 8i32;
-    let tw = text_width(font, &text, fs) as i32;
-    let th = text_line_height(font, fs) as i32;
+    let tw = text_width(font, &text, font_size) as i32;
+    let th = text_line_height(font, font_size) as i32;
     let w = img.width() as i32;
     let h = img.height() as i32;
 
@@ -592,25 +690,25 @@ fn apply_timestamp(
         TimestampPosition::TopRight => (w - tw - pad, pad),
         TimestampPosition::TopLeft => (pad, pad),
     };
-    draw_text_shadowed(img, font, &text, x, y, fs, [255, 230, 80]);
+    draw_text_shadowed(img, font, &text, x, y, font_size, [255, 230, 80]);
 }
 
-/// Add a solid dark bar (top or bottom) containing `text` to the image.
+/// Add a solid dark bar (top or bottom) containing one or more `lines` to the image.
 /// Returns a new `RgbImage` with increased height.
 fn add_metadata_bar(
     src: RgbImage,
     font: &ab_glyph::FontArc,
-    text: &str,
+    lines: &[String],
     position: &BarPosition,
-    font_size: u32,
+    font_size: f32,
 ) -> RgbImage {
-    if text.is_empty() {
+    if lines.is_empty() || font_size < 1.0 {
         return src;
     }
 
     let pad = 8u32;
-    let lh = text_line_height(font, font_size as f32).ceil() as u32;
-    let bar_h = lh + pad * 2;
+    let lh = text_line_height(font, font_size).ceil().max(1.0) as u32;
+    let bar_h = lh * lines.len() as u32 + pad * 2;
     let w = src.width();
     let orig_h = src.height();
 
@@ -644,17 +742,19 @@ fn add_metadata_bar(
         return src;
     }
 
-    // Draw text centred vertically in the bar
-    let text_y = bar_top as i32 + pad as i32;
-    draw_text(
-        &mut out,
-        font,
-        text,
-        pad as i32,
-        text_y,
-        font_size as f32,
-        [215, 215, 215],
-    );
+    // Draw each line stacked vertically.
+    for (i, line) in lines.iter().enumerate() {
+        let y = bar_top as i32 + pad as i32 + (i as i32) * lh as i32;
+        draw_text(
+            &mut out,
+            font,
+            line,
+            pad as i32,
+            y,
+            font_size,
+            [215, 215, 215],
+        );
+    }
 
     out
 }
@@ -669,36 +769,35 @@ fn apply_overlays(
     file_size: u64,
     timestamp: f64,
 ) -> RgbImage {
-    if overlay.show_timestamp && overlay.timestamp_font_size > 0 {
+    if overlay.show_timestamp {
+        let fs = resolve_timestamp_font_size(overlay, img.width(), img.height());
         apply_timestamp(
             &mut img,
             font,
             timestamp,
             &overlay.timestamp_position,
-            overlay.timestamp_font_size,
+            fs,
         );
     }
-    if overlay.show_metadata_bar && !overlay.metadata_fields.is_empty() && overlay.bar_font_size > 0
-    {
-        let text = build_bar_text(
+    if overlay.show_metadata_bar {
+        let lines = build_bar_lines(
             &overlay.metadata_fields,
             meta,
             video_path,
             file_size,
             timestamp,
+            &overlay.bar_layout,
+            overlay.show_branding,
         );
-        img = add_metadata_bar(
-            img,
-            font,
-            &text,
-            &overlay.bar_position,
-            overlay.bar_font_size,
-        );
+        if !lines.is_empty() {
+            let fs = resolve_bar_font_size(overlay, img.height());
+            img = add_metadata_bar(img, font, &lines, &overlay.bar_position, fs);
+        }
     }
     img
 }
 
-// ── Processing result ─────────────────────────────────────────────────────────
+//  Processing result 
 #[derive(Debug, Clone)]
 pub struct ProcessingResult {
     pub video_path: PathBuf,
@@ -706,7 +805,7 @@ pub struct ProcessingResult {
     pub error: Option<String>,
 }
 
-// ── Main public entry point ───────────────────────────────────────────────────
+//  Main public entry point 
 /// Generate thumbnails for a single video file.
 ///
 /// `progress_cb(fraction 0..1, message)` is called periodically from this thread.
@@ -780,7 +879,7 @@ pub fn process_video(
     }
 
     match &config.mode {
-        // ── Single frame ──────────────────────────────────────────────────────
+        //  Single frame 
         ThumbnailMode::Single { seek_percent } => {
             let t = duration * seek_percent / 100.0;
             let out = out_dir.join(format!("{prefix}{stem}.{ext}"));
@@ -809,49 +908,107 @@ pub fn process_video(
             }
         }
 
-        // ── Grid ──────────────────────────────────────────────────────────────
+        //  Grid 
         ThumbnailMode::Grid { cols, rows } => {
             let total = (cols * rows) as usize;
             let tile_w = (config.max_width / cols).max(1);
             let tile_h = (config.max_height / rows).max(1);
-            let mut frames: Vec<RgbImage> = Vec::with_capacity(total);
 
-            for i in 0..total {
+            let frames: Vec<RgbImage> = if config.parallel && total > 1 {
+                use std::sync::mpsc;
+                let (tx, rx) = mpsc::channel::<(usize, Result<RgbImage, String>)>();
+                for i in 0..total {
+                    let tx = tx.clone();
+                    let vp = video_path.to_path_buf();
+                    let stop = Arc::clone(stop_flag);
+                    let fo = font_opt.clone();
+                    let ov2 = ov.clone();
+                    let t = duration * (i + 1) as f64 / (total + 2) as f64;
+                    rayon::spawn(move || {
+                        if stop.load(Ordering::Relaxed) {
+                            let _ = tx.send((i, Err("Aborted".to_string())));
+                            return;
+                        }
+                        let r = extract_frame(&vp, t, tile_w, tile_h).map(|mut img| {
+                            if let Some(f) = &fo
+                                && ov2.show_timestamp {
+                                    let fs = resolve_timestamp_font_size(&ov2, img.width(), img.height());
+                                    apply_timestamp(
+                                        &mut img,
+                                        f,
+                                        t,
+                                        &ov2.timestamp_position,
+                                        fs,
+                                    );
+                                }
+                            img
+                        });
+                        let _ = tx.send((i, r));
+                    });
+                }
+                drop(tx);
+                let mut indexed = vec![None::<RgbImage>; total];
+                let mut done = 0usize;
+                for (i, r) in rx {
+                    match r {
+                        Ok(img) => {
+                            indexed[i] = Some(img);
+                            done += 1;
+                            progress_cb(
+                                done as f32 / total as f32 * 0.9,
+                                &format!("Frame {done}/{total}"),
+                            );
+                        }
+                        Err(_) if stop_flag.load(Ordering::Relaxed) => return result,
+                        Err(e) => {
+                            result.error = Some(e);
+                            return result;
+                        }
+                    }
+                }
                 if stop_flag.load(Ordering::Relaxed) {
                     return result;
                 }
-                let t = duration * (i + 1) as f64 / (total + 2) as f64;
-                progress_cb(
-                    i as f32 / total as f32,
-                    &format!("Frame {}/{}", i + 1, total),
-                );
-
-                match extract_frame(video_path, t, tile_w, tile_h) {
-                    Ok(img) => {
-                        // Timestamp on each tile (no bar — that would break grid layout).
-                        let img = if let Some(f) = &font_opt {
-                            let mut img = img;
-                            if ov.show_timestamp && ov.timestamp_font_size > 0 {
-                                apply_timestamp(
-                                    &mut img,
-                                    f,
-                                    t,
-                                    &ov.timestamp_position,
-                                    ov.timestamp_font_size,
-                                );
-                            }
-                            img
-                        } else {
-                            img
-                        };
-                        frames.push(img);
-                    }
-                    Err(e) => {
-                        result.error = Some(e);
+                indexed.into_iter().flatten().collect()
+            } else {
+                let mut frames = Vec::with_capacity(total);
+                for i in 0..total {
+                    if stop_flag.load(Ordering::Relaxed) {
                         return result;
                     }
+                    let t = duration * (i + 1) as f64 / (total + 2) as f64;
+                    progress_cb(
+                        i as f32 / total as f32,
+                        &format!("Frame {}/{}", i + 1, total),
+                    );
+                    match extract_frame(video_path, t, tile_w, tile_h) {
+                        Ok(img) => {
+                            let img = if let Some(f) = &font_opt {
+                                let mut img = img;
+                                if ov.show_timestamp {
+                                    let fs = resolve_timestamp_font_size(ov, img.width(), img.height());
+                                    apply_timestamp(
+                                        &mut img,
+                                        f,
+                                        t,
+                                        &ov.timestamp_position,
+                                        fs,
+                                    );
+                                }
+                                img
+                            } else {
+                                img
+                            };
+                            frames.push(img);
+                        }
+                        Err(e) => {
+                            result.error = Some(e);
+                            return result;
+                        }
+                    }
                 }
-            }
+                frames
+            };
 
             let fw = frames[0].width();
             let fh = frames[0].height();
@@ -872,11 +1029,23 @@ pub fn process_video(
 
             // Apply metadata bar to the full grid (use video mid-point as timestamp).
             let grid = if let Some(f) = &font_opt {
-                if ov.show_metadata_bar && !ov.metadata_fields.is_empty() {
+                if ov.show_metadata_bar {
                     let bar_ts = duration / 2.0;
-                    let text =
-                        build_bar_text(&ov.metadata_fields, &meta, video_path, file_size, bar_ts);
-                    add_metadata_bar(grid, f, &text, &ov.bar_position, ov.bar_font_size)
+                    let lines = build_bar_lines(
+                        &ov.metadata_fields,
+                        &meta,
+                        video_path,
+                        file_size,
+                        bar_ts,
+                        &ov.bar_layout,
+                        ov.show_branding,
+                    );
+                    if lines.is_empty() {
+                        grid
+                    } else {
+                        let fs = resolve_bar_font_size(ov, grid.height());
+                        add_metadata_bar(grid, f, &lines, &ov.bar_position, fs)
+                    }
                 } else {
                     grid
                 }
@@ -898,43 +1067,114 @@ pub fn process_video(
             }
         }
 
-        // ── Sequence ──────────────────────────────────────────────────────────
+        //  Sequence 
         ThumbnailMode::Sequence { count } => {
-            for i in 0..*count {
+            let n = *count;
+            if config.parallel && n > 1 {
+                use std::sync::mpsc;
+                let (tx, rx) = mpsc::channel::<(u32, Result<PathBuf, String>)>();
+                let stem_str = stem.to_string();
+                for i in 0..n {
+                    let tx = tx.clone();
+                    let vp = video_path.to_path_buf();
+                    let stop = Arc::clone(stop_flag);
+                    let fo = font_opt.clone();
+                    let ov2 = ov.clone();
+                    let meta2 = meta.clone();
+                    let out_dir2 = out_dir.clone();
+                    let prefix2 = prefix.clone();
+                    let stem2 = stem_str.clone();
+                    let fmt = config.format.clone();
+                    let max_w = config.max_width;
+                    let max_h = config.max_height;
+                    let overwrite = config.overwrite;
+                    let quality = config.quality;
+                    let t = duration * (i + 1) as f64 / (n + 2) as f64;
+                    rayon::spawn(move || {
+                        if stop.load(Ordering::Relaxed) {
+                            let _ = tx.send((i, Err("Aborted".to_string())));
+                            return;
+                        }
+                        let out = out_dir2.join(format!("{prefix2}{stem2}_{:04}.{ext}", i + 1));
+                        if out.exists() && !overwrite {
+                            let _ = tx.send((i, Ok(out)));
+                            return;
+                        }
+                        let r = extract_frame(&vp, t, max_w, max_h)
+                            .map(|img| match &fo {
+                                Some(f) => {
+                                    apply_overlays(img, f, &ov2, &meta2, &vp, file_size, t)
+                                }
+                                None => img,
+                            })
+                            .and_then(|img| {
+                                save_image(&img, &out, &fmt, quality)?;
+                                Ok(out)
+                            });
+                        let _ = tx.send((i, r));
+                    });
+                }
+                drop(tx);
+                let mut indexed = vec![None::<PathBuf>; n as usize];
+                let mut done = 0u32;
+                for (i, r) in rx {
+                    match r {
+                        Ok(path) => {
+                            indexed[i as usize] = Some(path);
+                            done += 1;
+                            progress_cb(done as f32 / n as f32, &format!("Frame {done}/{n}"));
+                        }
+                        Err(_) if stop_flag.load(Ordering::Relaxed) => return result,
+                        Err(e) => {
+                            result.error = Some(e);
+                            return result;
+                        }
+                    }
+                }
                 if stop_flag.load(Ordering::Relaxed) {
                     return result;
                 }
-                let t = duration * (i + 1) as f64 / (count + 2) as f64;
-                let out = out_dir.join(format!("{prefix}{stem}_{:04}.{ext}", i + 1));
-
-                progress_cb(
-                    i as f32 / *count as f32,
-                    &format!("Frame {}/{}", i + 1, count),
-                );
-
-                if out.exists() && !config.overwrite {
-                    result.output_files.push(out);
-                    continue;
+                for path in indexed.into_iter().flatten() {
+                    result.output_files.push(path);
                 }
-
-                match extract_frame(video_path, t, config.max_width, config.max_height) {
-                    Ok(img) => {
-                        let img = overlay!(img, t);
-                        match save_image(&img, &out, &config.format, config.quality) {
-                            Ok(()) => result.output_files.push(out),
-                            Err(e) => {
-                                result.error = Some(e);
-                                return result;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        result.error = Some(e);
+                progress_cb(1.0, "Done");
+            } else {
+                for i in 0..n {
+                    if stop_flag.load(Ordering::Relaxed) {
                         return result;
                     }
+                    let t = duration * (i + 1) as f64 / (n + 2) as f64;
+                    let out = out_dir.join(format!("{prefix}{stem}_{:04}.{ext}", i + 1));
+
+                    progress_cb(
+                        i as f32 / n as f32,
+                        &format!("Frame {}/{}", i + 1, n),
+                    );
+
+                    if out.exists() && !config.overwrite {
+                        result.output_files.push(out);
+                        continue;
+                    }
+
+                    match extract_frame(video_path, t, config.max_width, config.max_height) {
+                        Ok(img) => {
+                            let img = overlay!(img, t);
+                            match save_image(&img, &out, &config.format, config.quality) {
+                                Ok(()) => result.output_files.push(out),
+                                Err(e) => {
+                                    result.error = Some(e);
+                                    return result;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            result.error = Some(e);
+                            return result;
+                        }
+                    }
                 }
+                progress_cb(1.0, "Done");
             }
-            progress_cb(1.0, "Done");
         }
     }
 

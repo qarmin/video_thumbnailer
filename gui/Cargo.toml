@@ -1,7 +1,13 @@
 [package]
 name = "thumbnailer-gui"
-version = "0.1.0"
+version = "1.0.0"
+authors = ["Rafał Mikrut <mikrutrafal@protonmail.com>"]
 edition = "2024"
+build = "build.rs"
+description = "Tool to create video thumbnails"
+license = "GPL-3.0-only"
+homepage = "https://github.com/qarmin/video_thumbnailer"
+repository = "https://github.com/qarmin/video_thumbnailer"
 
 [[bin]]
 name = "vthumb-gui"
@@ -10,7 +16,9 @@ path = "src/main.rs"
 [dependencies]
 thumbnailer-core = { path = "../core" }
 slint = "1"
-rfd  = "0.15"
+rfd  = "0.17.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [build-dependencies]
 slint-build = "1"

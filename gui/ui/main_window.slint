@@ -1,0 +1,72 @@
+import { HorizontalBox, Palette, ScrollView, TextEdit, VerticalBox } from "std-widgets.slint";
+import {
+    Callabler, EnumIndex, GuiState, Settings, Strings, Theme,
+    OutputFormat, ThumbMode, TimestampCorner, BarSide, BarLayoutMode, FontSize
+} from "globals.slint";
+import { FilesPanel } from "panels/files_panel.slint";
+import { OutputPanel } from "panels/output_panel.slint";
+import { ModePanel } from "panels/mode_panel.slint";
+import { OptionsPanel } from "panels/options_panel.slint";
+import { OverlayPanel } from "panels/overlay_panel.slint";
+import { ProgressPanel } from "panels/progress_panel.slint";
+
+export {
+    Callabler, EnumIndex, GuiState, Settings, Strings, Theme,
+    OutputFormat, ThumbMode, TimestampCorner, BarSide, BarLayoutMode, FontSize
+}
+
+export component AppWindow inherits Window {
+    title: "Video Thumbnailer";
+    preferred-width: 1200px;
+    preferred-height: 800px;
+    min-width: 820px;
+    min-height: 560px;
+
+    background: Theme.window-bg;
+    in property <[StandardListViewItem]> file-items: [];
+
+    // Single source of truth for the std-widgets palette. Called from `init` (with
+    // default settings) and again from Rust right after the persisted settings load,
+    // and from the theme-toggle callback. Without this re-sync, Slint's std-widgets
+    // would stay on the palette captured at `init` time and the UI would mix themes.
+    public function sync-theme() {
+        Palette.color-scheme = Settings.dark-theme ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    init => { sync-theme(); }
+
+    VerticalBox {
+        padding: 8px;
+        spacing: 6px;
+
+        HorizontalBox {
+            spacing: 8px;
+            vertical-stretch: 1;
+
+            FilesPanel { file-count: root.file-items.length; file-items: root.file-items; }
+
+            ScrollView {
+                horizontal-stretch: 1;
+                vertical-stretch: 1;
+
+                VerticalBox {
+                    spacing: 6px;
+                    padding: 4px;
+                    OutputPanel { }
+                    ModePanel { }
+                    OptionsPanel { }
+                    OverlayPanel { }
+                }
+            }
+        }
+
+        ProgressPanel { has-files: root.file-items.length > 0; }
+
+        TextEdit {
+            text <=> GuiState.log-text;
+            read-only: true;
+            height: 110px;
+            wrap: word-wrap;
+        }
+    }
+}

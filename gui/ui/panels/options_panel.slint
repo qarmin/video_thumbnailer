@@ -1,0 +1,20 @@
+import { CheckBox, GroupBox, HorizontalBox, LineEdit, VerticalBox } from "std-widgets.slint";
+import { Settings, Strings } from "../globals.slint";
+
+export component OptionsPanel inherits GroupBox {
+    title: Strings.options-group;
+
+    VerticalBox {
+        spacing: 4px;
+        CheckBox { text: Strings.overwrite-text; checked <=> Settings.overwrite; }
+        HorizontalBox {
+            spacing: 6px;
+            Text { text: Strings.prefix-label; vertical-alignment: center; min-width: 72px; }
+            LineEdit {
+                text <=> Settings.prefix;
+                placeholder-text: Strings.prefix-placeholder;
+                horizontal-stretch: 1;
+            }
+        }
+    }
+}
